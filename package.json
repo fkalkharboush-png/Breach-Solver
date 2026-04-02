@@ -1,0 +1,8 @@
+{
+  "name": "breach-protocol-solver",
+  "version": "1.0.0",
+  "description": "Cyberpunk 2077 Breach Protocol Solver with AI screenshot scanning",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
