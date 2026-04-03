@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BREACH PROTOCOL // SOLVER</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+  :root {
+    --yellow: #FFE801;
+    --cyan: #00F0FF;
+    --red: #FF003C;
+    --green: #00FF9C;
+    --bg: #050A0E;
+    --panel: #0A1520;
+    --border: #1A3A50;
+    --text: #7ABFCC;
+    --dim: #2A5A6A;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  @keyframes flicker {
+    0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:0.85} 94%{opacity:1} 96%{opacity:0.9} 97%{opacity:1}
+  }
+  @keyframes glow-pulse {
+    0%,100%{text-shadow:0 0 8px var(--yellow),0 0 20px rgba(255,232,1,0.4)}
+    50%{text-shadow:0 0 14px var(--yellow),0 0 35px rgba(255,232,1,0.6)}
+  }
+  @keyframes slide-in {
+    from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)}
+  }
+  @keyframes blink {
+    0%,100%{opacity:1} 50%{opacity:0}
+  }
+  @keyframes scan-line {
+    0%{top:-10%} 100%{top:110%}
+  }
+
+  body { animation: flicker 9s infinite; }
+
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10,21,32,0.95);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-title {
+    color: var(--yellow);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 4px;
+    animation: glow-pulse 3s infinite;
+  }
+  .header-title span { color: var(--cyan); }
+  .header-sub { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin-top: 2px; }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .fps { color: var(--yellow); font-size: 11px; letter-spacing: 1px; }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 24px;
+    gap: 20px;
+  }
+
+  .col { display: flex; flex-direction: column; gap: 20px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--yellow);
+  }
+
+  .panel-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,232,1,0.03);
+  }
+  .panel-icon { width: 8px; height: 8px; background: var(--yellow); transform: rotate(45deg); flex-shrink: 0; }
+  .panel-title {
+    color: var(--yellow);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 3px;
+  }
+
+  .panel-body { padding: 16px; }
+
+  /* Buffer */
+  .buffer-display {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .buffer-slot {
+    width: 52px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: bold;
+    background: rgba(0,0,0,0.4);
+    color: var(--yellow);
+    transition: all 0.2s;
+  }
+  .buffer-slot.filled {
+    border: 1px solid var(--yellow);
+    background: rgba(255,232,1,0.1);
+    box-shadow: 0 0 8px rgba(255,232,1,0.2);
+    animation: slide-in 0.2s ease;
+  }
+  .buffer-slot.empty {
+    border: 1px dashed var(--dim);
+  }
+
+  /* Matrix */
+  .matrix-grid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .matrix-row { display: flex; gap: 4px; }
+  .cell {
+    width: 52px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: bold;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+    color: var(--text);
+    transition: all 0.1s;
+    position: relative;
+    letter-spacing: 1px;
+    user-select: none;
+    cursor: default;
+  }
+  .cell.selectable {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(0,240,255,0.08);
+    box-shadow: inset 0 0 8px rgba(0,240,255,0.15);
+    cursor: pointer;
+  }
+  .cell.selectable:hover {
+    background: rgba(0,240,255,0.18);
+    box-shadow: inset 0 0 14px rgba(0,240,255,0.28);
+  }
+  .cell.selected {
+    border-color: var(--yellow);
+    color: var(--yellow);
+    background: rgba(255,232,1,0.15);
+    box-shadow: inset 0 0 10px rgba(255,232,1,0.2);
+  }
+  .cell.used {
+    color: var(--dim);
+    border-color: #0d2030;
+    background: rgba(0,0,0,0.5);
+    cursor: default;
+  }
+  .cell .step-num {
+    position: absolute;
+    top: 2px; right: 3px;
+    font-size: 8px;
+    color: var(--yellow);
+    opacity: 0.9;
+  }
+
+  /* Sequences */
+  .sequence-list { display: flex; flex-direction: column; gap: 10px; }
+  .sequence-item {
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.3s;
+  }
+  .sequence-item.complete {
+    border-color: var(--yellow);
+    background: rgba(255,232,1,0.05);
+  }
+  .sequence-item.impossible {
+    opacity: 0.4;
+    border-color: var(--red);
+    background: rgba(255,0,60,0.04);
+  }
+  .seq-status { font-size: 13px; min-width: 16px; }
+  .sequence-item.complete .seq-status { color: var(--yellow); }
+  .sequence-item.impossible .seq-status { color: var(--red); }
+  .seq-codes { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+  .seq-code {
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text);
+    background: rgba(0,0,0,0.3);
+    transition: all 0.3s;
+  }
+  .seq-code.matched {
+    border-color: var(--yellow);
+    color: var(--yellow);
+    background: rgba(255,232,1,0.1);
+    box-shadow: 0 0 6px rgba(255,232,1,0.15);
+  }
+  .seq-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 1px;
+    min-width: 150px;
+    text-align: right;
+  }
+
+  /* Buttons */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .btn {
+    font-family: 'Share Tech Mono', monospace;
+    padding: 8px 16px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    border: 1px solid;
+    background: transparent;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .btn-primary { border-color: var(--yellow); color: var(--yellow); }
+  .btn-primary:hover { background: rgba(255,232,1,0.1); box-shadow: 0 0 10px rgba(255,232,1,0.2); }
+  .btn-secondary { border-color: var(--dim); color: var(--dim); }
+  .btn-secondary:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(0,240,255,0.05); }
+  .btn-danger { border-color: var(--red); color: var(--red); }
+  .btn-danger:hover { background: rgba(255,0,60,0.08); }
+  .btn-scan { border-color: var(--cyan); color: var(--cyan); }
+  .btn-scan:hover { background: rgba(0,240,255,0.08); }
+
+  /* Config */
+  .config-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .config-label { font-size: 10px; letter-spacing: 1px; color: var(--dim); min-width: 90px; }
+  .config-input {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    color: var(--yellow);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 4px 8px;
+    width: 52px;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .config-input:focus { outline: none; border-color: var(--yellow); }
+  select.config-input { width: auto; cursor: pointer; }
+
+  /* Seq config */
+  .seq-input-block { margin-bottom: 12px; }
+  .seq-input-row { display: flex; gap: 5px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .seq-name-inp { width: 180px; }
+  .remove-btn { background: none; border: none; color: var(--red); font-size: 16px; padding: 0 4px; cursor: pointer; opacity: 0.7; }
+  .remove-btn:hover { opacity: 1; }
+
+  /* Status bar */
+  .status-bar {
+    padding: 7px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 20px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--dim);
+    background: rgba(0,0,0,0.2);
+  }
+  .status-bar span { color: var(--cyan); }
+
+  /* Result */
+  .result-msg {
+    margin-top: 12px;
+    text-align: center;
+    padding: 10px 14px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    display: none;
+    border: 1px solid;
+  }
+  .result-msg.show { display: block; }
+  .result-msg.success { color: var(--yellow); border-color: var(--yellow); background: rgba(255,232,1,0.05); animation: glow-pulse 1.5s infinite; }
+  .result-msg.partial { color: var(--cyan); border-color: var(--cyan); background: rgba(0,240,255,0.04); }
+  .result-msg.fail { color: var(--red); border-color: var(--red); background: rgba(255,0,60,0.04); }
+
+  /* Partial info box */
+  .partial-info {
+    margin-top: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+    font-size: 11px;
+    line-height: 1.8;
+    letter-spacing: 0.5px;
+    display: none;
+  }
+  .partial-info.show { display: block; }
+  .partial-info .solved { color: var(--green); }
+  .partial-info .unsolved { color: var(--red); }
+  .partial-info .info-label { color: var(--dim); letter-spacing: 1px; }
+
+  /* Steps */
+  .solution-steps { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; }
+  .solution-step {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-left: 2px solid var(--dim);
+    color: var(--dim);
+    letter-spacing: 1px;
+    animation: slide-in 0.2s ease;
+  }
+  .solution-step.active { border-left-color: var(--yellow); color: var(--text); }
+
+  /* Scan */
+  .scan-status {
+    margin-top: 8px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    display: none;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+  }
+
+  .solve-hint {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 10px;
+    letter-spacing: 1px;
+  }
+  .solve-hint span { color: var(--cyan); animation: blink 1.5s infinite; }
+
+  @media (max-width: 680px) {
+    .main { grid-template-columns: 1fr; padding: 12px; }
+    .cell { width: 44px; height: 38px; font-size: 13px; }
+    .buffer-slot { width: 44px; }
+    .seq-name { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-title">BREACH <span>PROTOCOL</span></div>
+    <div class="header-sub">NEURAL INTERFACE // ICE PENETRATION SYSTEM v2.0</div>
+  </div>
+  <div class="header-right">
+    <div class="fps">FPS 205 | 143</div>
+    <div class="header-sub" id="solverStatus">SOLVER READY</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- LEFT COLUMN -->
+  <div class="col">
+
+    <!-- Matrix + Buffer Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon"></div>
+        <div class="panel-title">CODE MATRIX</div>
+      </div>
+      <div class="panel-body">
+        <div id="bufferDisplay" class="buffer-display"></div>
+        <div id="matrixContainer" class="matrix-grid"></div>
+
+        <div class="controls">
+          <button class="btn btn-primary" onclick="autoSolve()">&#9654; AUTO SOLVE</button>
+          <button class="btn btn-secondary" onclick="resetGame()">&#8635; RESET</button>
+        </div>
+
+        <div id="resultMsg" class="result-msg"></div>
+        <div id="partialInfo" class="partial-info"></div>
+        <div id="solutionSteps" class="solution-steps"></div>
+      </div>
+      <div class="status-bar">
+        <div>BUFFER: <span id="sBufUsed">0</span>/<span id="sBufMax">6</span></div>
+        <div>ROW: <span id="sRow">—</span></div>
+        <div>COL: <span id="sCol">—</span></div>
+        <div>TURN: <span id="sTurn">ROW 1</span></div>
+      </div>
+    </div>
+
+    <!-- Matrix Config Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon"></div>
+        <div class="panel-title">MATRIX CONFIG</div>
+      </div>
+      <div class="panel-body">
+        <div class="config-row">
+          <span class="config-label">BUFFER SIZE</span>
+          <select class="config-input" id="bufferSizeSelect" onchange="updateBufferSize()">
+            <option>4</option><option>5</option><option value="6" selected>6</option>
+            <option>7</option><option>8</option>
+          </select>
+        </div>
+        <div class="config-row">
+          <span class="config-label">GRID SIZE</span>
+          <select class="config-input" id="gridSizeSelect" onchange="resizeGrid()">
+            <option>4</option><option>5</option><option value="6" selected>6</option>
+          </select>
+        </div>
+        <div id="matrixInputs"></div>
+        <div class="controls">
+          <button class="btn btn-primary" onclick="loadMatrix()">LOAD MATRIX</button>
+          <button class="btn btn-secondary" onclick="loadPreset()">LOAD PRESET</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="col">
+
+    <!-- Sequences Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon"></div>
+        <div class="panel-title">SEQUENCE REQUIRED TO UPLOAD DAEMON</div>
+      </div>
+      <div class="panel-body">
+        <div id="sequenceList" class="sequence-list"></div>
+        <p class="solve-hint">SELECT CODES MANUALLY OR PRESS <span>AUTO SOLVE</span></p>
+      </div>
+    </div>
+
+    <!-- Scan Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon"></div>
+        <div class="panel-title">SCREENSHOT SCAN</div>
+      </div>
+      <div class="panel-body">
+        <p style="font-size:11px;color:var(--dim);letter-spacing:1px;margin-bottom:12px;line-height:1.7;">
+          Upload a screenshot of the breach protocol screen. AI will automatically read the matrix, sequences, and buffer size.
+          <br><br>
+          <span style="color:var(--yellow);">NOTE:</span> This feature requires the Vercel deployment with an API key. It will not work in a standalone HTML file.
+        </p>
+        <div class="controls">
+          <button class="btn btn-scan" onclick="triggerScreenshotUpload()">&#128247; SCAN SCREENSHOT</button>
+          <input type="file" id="screenshotInput" accept="image/*" style="display:none" onchange="handleScreenshotUpload(event)">
+        </div>
+        <div id="scanStatus" class="scan-status"></div>
+      </div>
+    </div>
+
+    <!-- Sequence Config Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon"></div>
+        <div class="panel-title">DAEMON SEQUENCE CONFIG</div>
+      </div>
+      <div class="panel-body">
+        <div id="seqInputArea"></div>
+        <div class="controls">
+          <button class="btn btn-secondary" onclick="addSequence()">+ ADD SEQUENCE</button>
+          <button class="btn btn-primary" onclick="applySequences()">APPLY</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── DEFAULT DATA ──────────────────────────────────────────────────────────────
+const DEFAULT_MATRIX = [
+  ['1C','BD','BD','1C','E9','7A'],
+  ['1C','BD','1C','BD','55','1C'],
+  ['1C','BD','55','7A','7A','BD'],
+  ['7A','55','E9','1C','1C','7A'],
+  ['55','55','1C','7A','7A','7A'],
+  ['1C','55','E9','55','55','1C']
+];
+const DEFAULT_SEQUENCES = [
+  { name: 'BASIC DATAMINE',    codes: ['E9','BD'] },
+  { name: 'ADVANCED DATAMINE', codes: ['BD','1C','7A'] },
+  { name: 'EXPERT DATAMINE',   codes: ['7A','55','7A'] },
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let gridSize = 6, bufferSize = 6;
+let matrix = [], buffer = [], selected = [];
+let turnIsRow = true, currentRow = null, currentCol = null;
+let sequences = [], seqInputs = [];
+let impossibleSeqs = new Set();
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+function init() {
+  matrix    = DEFAULT_MATRIX.map(r => [...r]);
+  sequences = DEFAULT_SEQUENCES.map(s => ({ ...s, codes: [...s.codes], complete: false, matched: 0 }));
+  seqInputs = DEFAULT_SEQUENCES.map(s => ({ name: s.name, codes: [...s.codes] }));
+  gridSize = 6; bufferSize = 6;
+  buffer = []; selected = []; turnIsRow = true; currentRow = null; currentCol = null;
+  impossibleSeqs = new Set();
+  buildMatrixInputs();
+  buildSeqInputArea();
+  renderAll();
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderBuffer();
+  renderMatrix();
+  renderSequences();
+  renderStatus();
+}
+
+function renderBuffer() {
+  const el = document.getElementById('bufferDisplay');
+  el.innerHTML = '';
+  for (let i = 0; i < bufferSize; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'buffer-slot ' + (buffer[i] ? 'filled' : 'empty');
+    slot.textContent = buffer[i] || '';
+    el.appendChild(slot);
+  }
+}
+
+function renderMatrix() {
+  const container = document.getElementById('matrixContainer');
+  container.innerHTML = '';
+  for (let r = 0; r < gridSize; r++) {
+    const row = document.createElement('div');
+    row.className = 'matrix-row';
+    for (let c = 0; c < gridSize; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.textContent = matrix[r][c];
+      const selIdx = selected.findIndex(s => s.row === r && s.col === c);
+      if (selIdx !== -1) {
+        cell.classList.add('selected');
+        const n = document.createElement('span');
+        n.className = 'step-num';
+        n.textContent = selIdx + 1;
+        cell.appendChild(n);
+      } else if (isUsed(r, c)) {
+        cell.classList.add('used');
+      } else if (isSelectable(r, c)) {
+        cell.classList.add('selectable');
+        cell.onclick = () => selectCell(r, c);
+      }
+      row.appendChild(cell);
+    }
+    container.appendChild(row);
+  }
+}
+
+function isUsed(r, c) { return selected.some(s => s.row === r && s.col === c); }
+function isSelectable(r, c) {
+  if (isUsed(r, c) || buffer.length >= bufferSize) return false;
+  if (selected.length === 0) return r === 0;
+  return turnIsRow ? r === currentRow : c === currentCol;
+}
+
+function selectCell(r, c) {
+  if (!isSelectable(r, c)) return;
+  selected.push({ row: r, col: c, code: matrix[r][c] });
+  buffer.push(matrix[r][c]);
+  currentRow = r; currentCol = c;
+  turnIsRow = !turnIsRow;
+  checkSequences();
+  renderAll();
+}
+
+function checkSequences() {
+  const chain = buffer.join(' ');
+  sequences.forEach((seq, idx) => {
+    const seqStr = seq.codes.join(' ');
+    seq.complete = chain.includes(seqStr);
+    seq.matched = 0;
+    if (seq.complete) { seq.matched = seq.codes.length; return; }
+    for (let len = Math.min(seq.codes.length - 1, buffer.length); len > 0; len--) {
+      if (buffer.slice(-len).join(' ') === seq.codes.slice(0, len).join(' ')) {
+        seq.matched = len; break;
+      }
+    }
+  });
+
+  const allDone = sequences.every(s => s.complete);
+  const outOfMoves = buffer.length >= bufferSize;
+  const msgEl = document.getElementById('resultMsg');
+
+  if (allDone) {
+    msgEl.className = 'result-msg show success';
+    msgEl.textContent = '✓ BREACH SUCCESSFUL — ALL DAEMONS UPLOADED';
+  } else if (outOfMoves) {
+    const completed = sequences.filter(s => s.complete).length;
+    if (completed > 0) {
+      msgEl.className = 'result-msg show partial';
+      msgEl.textContent = `⚡ PARTIAL BREACH — ${completed}/${sequences.length} DAEMONS UPLOADED`;
+    } else {
+      msgEl.className = 'result-msg show fail';
+      msgEl.textContent = '✗ BREACH FAILED — BUFFER EXHAUSTED';
+    }
+  } else {
+    msgEl.className = 'result-msg';
+  }
+}
+
+function renderSequences() {
+  const el = document.getElementById('sequenceList');
+  el.innerHTML = '';
+  sequences.forEach((seq, idx) => {
+    const item = document.createElement('div');
+    const isImpossible = impossibleSeqs.has(idx);
+    item.className = 'sequence-item' + (seq.complete ? ' complete' : '') + (isImpossible ? ' impossible' : '');
+
+    const status = document.createElement('div');
+    status.className = 'seq-status';
+    status.textContent = seq.complete ? '✓' : (isImpossible ? '✗' : '○');
+
+    const codes = document.createElement('div');
+    codes.className = 'seq-codes';
+    seq.codes.forEach((code, i) => {
+      const c = document.createElement('div');
+      c.className = 'seq-code' + (seq.complete || i < (seq.matched || 0) ? ' matched' : '');
+      c.textContent = code;
+      codes.appendChild(c);
+    });
+
+    const name = document.createElement('div');
+    name.className = 'seq-name';
+    name.textContent = seq.name + (isImpossible ? ' [IMPOSSIBLE]' : '');
+
+    item.appendChild(status);
+    item.appendChild(codes);
+    item.appendChild(name);
+    el.appendChild(item);
+  });
+}
+
+function renderStatus() {
+  document.getElementById('sBufUsed').textContent = buffer.length;
+  document.getElementById('sBufMax').textContent = bufferSize;
+  document.getElementById('sRow').textContent = currentRow !== null ? currentRow + 1 : '—';
+  document.getElementById('sCol').textContent = currentCol !== null ? currentCol + 1 : '—';
+  document.getElementById('sTurn').textContent = selected.length === 0 ? 'ROW 1' : (turnIsRow ? 'ROW' : 'COL');
+}
+
+function resetGame() {
+  buffer = []; selected = []; turnIsRow = true; currentRow = null; currentCol = null;
+  sequences.forEach(s => { s.complete = false; s.matched = 0; });
+  impossibleSeqs = new Set();
+  document.getElementById('resultMsg').className = 'result-msg';
+  document.getElementById('partialInfo').className = 'partial-info';
+  document.getElementById('solutionSteps').innerHTML = '';
+  document.getElementById('solverStatus').textContent = 'SOLVER READY';
+  renderAll();
+}
+
+// ── SMART SOLVER ──────────────────────────────────────────────────────────────
+function permutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const result = [];
+  for (let i = 0; i < arr.length; i++) {
+    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+    for (const p of permutations(rest)) result.push([arr[i], ...p]);
+  }
+  return result;
+}
+
+function mergeSequences(seqs) {
+  if (!seqs.length) return [];
+  let chain = [...seqs[0]];
+  for (let i = 1; i < seqs.length; i++) {
+    const next = seqs[i];
+    let merged = false;
+    for (let ov = Math.min(chain.length, next.length); ov > 0; ov--) {
+      if (chain.slice(-ov).join(',') === next.slice(0, ov).join(',')) {
+        chain = [...chain, ...next.slice(ov)]; merged = true; break;
+      }
+    }
+    if (!merged) chain = [...chain, ...next];
+  }
+  return chain;
+}
+
+function findPath(targetCodes) {
+  function dfs(idx, rr, cc, rowTurn, path, used) {
+    if (idx >= targetCodes.length) return path;
+    if (path.length >= bufferSize) return null;
+    const t = targetCodes[idx];
+    let cands = [];
+    if (path.length === 0) {
+      for (let c = 0; c < gridSize; c++) if (matrix[0][c] === t) cands.push({ row: 0, col: c });
+    } else if (rowTurn) {
+      for (let c = 0; c < gridSize; c++) if (matrix[rr][c] === t) cands.push({ row: rr, col: c });
+    } else {
+      for (let r = 0; r < gridSize; r++) if (matrix[r][cc] === t) cands.push({ row: r, col: cc });
+    }
+    for (const cand of cands) {
+      const k = `${cand.row},${cand.col}`;
+      if (used.has(k)) continue;
+      used.add(k);
+      const res = dfs(idx + 1, cand.row, cand.col, !rowTurn, [...path, { ...cand, code: t }], used);
+      if (res) return res;
+      used.delete(k);
+    }
+    return null;
+  }
+  return dfs(0, 0, 0, true, [], new Set());
+}
+
+function autoSolve() {
+  resetGame();
+  document.getElementById('solverStatus').textContent = 'SOLVING...';
+
+  const n = sequences.length;
+  const allIndices = [...Array(n).keys()];
+  let bestResult = null;
+  let bestCount = 0;
+
+  // Try all subsets from largest to smallest, all orderings
+  outer:
+  for (let take = n; take >= 1; take--) {
+    if (bestCount >= take) break;
+    const subsets = getSubsets(allIndices, take);
+    for (const subset of subsets) {
+      const orders = permutations(subset);
+      for (const order of orders) {
+        const chain = mergeSequences(order.map(i => sequences[i].codes));
+        if (chain.length <= bufferSize) {
+          const path = findPath(chain);
+          if (path && order.length > bestCount) {
+            bestCount = order.length;
+            bestResult = { path, covered: new Set(order), chain };
+            if (bestCount === n) break outer;
+          }
+        }
+      }
+    }
+    if (bestResult && bestCount >= take) break;
+  }
+
+  if (!bestResult) {
+    const msgEl = document.getElementById('resultMsg');
+    msgEl.className = 'result-msg show fail';
+    msgEl.textContent = '✗ NO SOLUTION FOUND — MATRIX UNSOLVABLE';
+    document.getElementById('solverStatus').textContent = 'NO SOLUTION';
+    return;
+  }
+
+  // Mark impossible sequences
+  impossibleSeqs = new Set();
+  for (let i = 0; i < n; i++) {
+    if (!bestResult.covered.has(i)) impossibleSeqs.add(i);
+  }
+
+  // Show partial info if not all solved
+  if (bestCount < n) {
+    const solvedNames  = [...bestResult.covered].map(i => sequences[i].name);
+    const missedNames  = allIndices.filter(i => !bestResult.covered.has(i)).map(i => sequences[i].name);
+    const infoEl = document.getElementById('partialInfo');
+    infoEl.className = 'partial-info show';
+    infoEl.innerHTML =
+      `<span class="info-label">BEST POSSIBLE RESULT:</span><br>` +
+      `<span class="solved">✓ SOLVABLE (${solvedNames.length}): ${solvedNames.join(', ')}</span><br>` +
+      `<span class="unsolved">✗ IMPOSSIBLE (${missedNames.length}): ${missedNames.join(', ')}</span><br>` +
+      `<span class="info-label">These daemons cannot be completed simultaneously with the others given this matrix layout and buffer size.</span>`;
+    document.getElementById('solverStatus').textContent = `PARTIAL: ${bestCount}/${n}`;
+  } else {
+    document.getElementById('solverStatus').textContent = 'SOLUTION FOUND';
+  }
+
+  animateSolution(bestResult.path);
+}
+
+function getSubsets(arr, size) {
+  if (size === arr.length) return [arr];
+  if (size === 0) return [[]];
+  const result = [];
+  for (let i = 0; i <= arr.length - size; i++) {
+    const rest = getSubsets(arr.slice(i + 1), size - 1);
+    for (const r of rest) result.push([arr[i], ...r]);
+  }
+  return result;
+}
+
+function animateSolution(path) {
+  const stepsEl = document.getElementById('solutionSteps');
+  stepsEl.innerHTML = '';
+  let i = 0;
+  function step() {
+    if (i >= path.length) return;
+    const p = path[i];
+    selectCell(p.row, p.col);
+    const stepEl = document.createElement('div');
+    stepEl.className = 'solution-step active';
+    stepEl.textContent = `${i + 1}. ${p.code}  →  ROW ${p.row + 1}, COL ${p.col + 1}`;
+    stepsEl.appendChild(stepEl);
+    stepsEl.querySelectorAll('.solution-step').forEach((el, j) => { if (j < i) el.classList.remove('active'); });
+    i++;
+    if (i < path.length) setTimeout(step, 380);
+  }
+  setTimeout(step, 150);
+}
+
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+function buildMatrixInputs() {
+  const container = document.getElementById('matrixInputs');
+  container.innerHTML = '<div style="font-size:10px;color:var(--dim);letter-spacing:1px;margin-bottom:8px">EDIT MATRIX CELLS</div>';
+  for (let r = 0; r < gridSize; r++) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px';
+    for (let c = 0; c < gridSize; c++) {
+      const inp = document.createElement('input');
+      inp.className = 'config-input';
+      inp.value = matrix[r]?.[c] || '1C';
+      inp.maxLength = 2;
+      inp.dataset.r = r; inp.dataset.c = c;
+      inp.oninput = () => { inp.value = inp.value.toUpperCase(); };
+      row.appendChild(inp);
+    }
+    container.appendChild(row);
+  }
+}
+
+function loadMatrix() {
+  const inputs = document.querySelectorAll('#matrixInputs input');
+  matrix = Array.from({ length: gridSize }, () => Array(gridSize).fill('1C'));
+  inputs.forEach(inp => { matrix[inp.dataset.r][inp.dataset.c] = inp.value.toUpperCase() || '1C'; });
+  resetGame();
+}
+
+function loadPreset() {
+  matrix    = DEFAULT_MATRIX.map(r => [...r]);
+  sequences = DEFAULT_SEQUENCES.map(s => ({ ...s, codes: [...s.codes], complete: false, matched: 0 }));
+  seqInputs = DEFAULT_SEQUENCES.map(s => ({ name: s.name, codes: [...s.codes] }));
+  gridSize = 6; bufferSize = 6;
+  document.getElementById('gridSizeSelect').value = '6';
+  document.getElementById('bufferSizeSelect').value = '6';
+  buildMatrixInputs();
+  buildSeqInputArea();
+  resetGame();
+}
+
+function updateBufferSize() {
+  bufferSize = parseInt(document.getElementById('bufferSizeSelect').value);
+  resetGame();
+}
+
+function resizeGrid() {
+  gridSize = parseInt(document.getElementById('gridSizeSelect').value);
+  matrix = Array.from({ length: gridSize }, (_, r) =>
+    Array.from({ length: gridSize }, (_, c) => DEFAULT_MATRIX[r]?.[c] || '1C')
+  );
+  buildMatrixInputs();
+  resetGame();
+}
+
+// ── SEQUENCE CONFIG ───────────────────────────────────────────────────────────
+function buildSeqInputArea() {
+  const area = document.getElementById('seqInputArea');
+  area.innerHTML = '';
+  seqInputs.forEach((seq, si) => {
+    const blk = document.createElement('div');
+    blk.className = 'seq-input-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'seq-input-row';
+    const ni = document.createElement('input');
+    ni.className = 'config-input seq-name-inp';
+    ni.value = seq.name; ni.oninput = () => { seqInputs[si].name = ni.value; };
+    const rm = document.createElement('button');
+    rm.className = 'remove-btn'; rm.textContent = '×';
+    rm.onclick = () => { seqInputs.splice(si, 1); buildSeqInputArea(); };
+    hdr.appendChild(ni); hdr.appendChild(rm);
+
+    const cr = document.createElement('div');
+    cr.className = 'seq-input-row';
+    seq.codes.forEach((code, ci) => {
+      const inp = document.createElement('input');
+      inp.className = 'config-input'; inp.value = code; inp.maxLength = 2;
+      inp.oninput = () => { seqInputs[si].codes[ci] = inp.value.toUpperCase(); };
+      cr.appendChild(inp);
+    });
+    const add = document.createElement('button');
+    add.className = 'btn btn-secondary';
+    add.style.cssText = 'font-size:10px;padding:4px 8px';
+    add.textContent = '+';
+    add.onclick = () => { seqInputs[si].codes.push('1C'); buildSeqInputArea(); };
+    cr.appendChild(add);
+
+    blk.appendChild(hdr); blk.appendChild(cr);
+    area.appendChild(blk);
+  });
+}
+
+function addSequence() {
+  seqInputs.push({ name: 'NEW DAEMON', codes: ['1C'] });
+  buildSeqInputArea();
+}
+
+function applySequences() {
+  sequences = seqInputs.map(s => ({ name: s.name, codes: [...s.codes], complete: false, matched: 0 }));
+  resetGame();
+}
+
+// ── SCREENSHOT SCAN ───────────────────────────────────────────────────────────
+function triggerScreenshotUpload() {
+  document.getElementById('screenshotInput').click();
+}
+
+async function handleScreenshotUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+
+  const statusEl = document.getElementById('scanStatus');
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'var(--cyan)';
+  statusEl.textContent = '⟳ SCANNING IMAGE VIA NEURAL INTERFACE...';
+
+  const base64 = await new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result.split(',')[1]);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+
+  const prompt = `You are analyzing a Cyberpunk 2077 Breach Protocol screenshot. Extract ALL of the following carefully:
+
+1. CODE MATRIX: The grid of 2-character hex codes on the LEFT side under "CODE MATRIX". Read every row left-to-right, top-to-bottom. Count rows and columns carefully — do not skip any.
+
+2. SEQUENCES: Listed on the RIGHT side under "SEQUENCE REQUIRED TO UPLOAD DAEMON". Each sequence has a name (like BASIC DATAMINE, ADVANCED DATAMINE, EXPERT DATAMINE) and a short list of 2-4 codes. Extract ALL sequences visible, in the order they appear.
+
+3. BUFFER SIZE: Count the number of empty buffer slot boxes shown at the top center of the screen. This is typically between 4 and 8.
+
+Respond ONLY with a raw JSON object. No markdown, no code fences, no explanation — just the JSON:
+{"bufferSize":6,"gridSize":6,"matrix":[["BD","55","E9","55","1C","55"],["7A","7A","1C","55","7A","BD"],["55","7A","1C","7A","BD","1C"],["1C","1C","55","55","BD","1C"],["BD","55","55","7A","55","BD"],["55","7A","7A","55","1C","E9"]],"sequences":[{"name":"BASIC DATAMINE","codes":["E9","1C"]},{"name":"ADVANCED DATAMINE","codes":["1C","BD"]},{"name":"EXPERT DATAMINE","codes":["1C","7A","E9"]}]}
+
+Important rules: all codes must be exactly 2 uppercase hex characters (1C 7A 55 BD E9 FF only); all matrix rows must have equal length matching gridSize; include every sequence visible; if buffer count is unclear default to 6.`;
+
+  try {
+    const response = await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mediaType: file.type || 'image/png' })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Server error');
+    }
+
+    const parsed = await response.json();
+    gridSize   = parsed.gridSize || parsed.matrix.length || 6;
+    bufferSize = parsed.bufferSize || 6;
+    matrix     = parsed.matrix;
+    sequences  = parsed.sequences.map(s => ({ ...s, complete: false, matched: 0 }));
+    seqInputs  = parsed.sequences.map(s => ({ name: s.name, codes: [...s.codes] }));
+
+    document.getElementById('gridSizeSelect').value   = String(gridSize);
+    document.getElementById('bufferSizeSelect').value = String(bufferSize);
+    buildMatrixInputs();
+    buildSeqInputArea();
+    resetGame();
+
+    statusEl.style.color = 'var(--yellow)';
+    statusEl.textContent = `✓ SCAN COMPLETE — ${gridSize}×${gridSize} MATRIX, ${sequences.length} SEQUENCES LOADED`;
+    setTimeout(() => { statusEl.style.display = 'none'; }, 4000);
+
+  } catch (err) {
+    statusEl.style.color = 'var(--red)';
+    statusEl.textContent = '✗ SCAN FAILED — ' + (err.message || 'UNKNOWN ERROR');
+    console.error(err);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
